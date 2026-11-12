@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
+
+try:
+    from astrbot.api import logger
+except ImportError:  # pragma: no cover
+    logger = logging.getLogger("astrbot_plugin_council")
 
 try:  # AstrBot >= 4.28
     from astrbot.api.web import (  # type: ignore
@@ -405,8 +411,11 @@ class CouncilWebAPI:
         return json_response({"success": True, "items": items})
 
     async def chat_context_records(self):
+        umo = _query_value("umo", "").strip()
+        if not umo:
+            return error_response("必须指定群聊 umo", status_code=400)
         data = await self.storage.get_chat_records(
-            umo=_query_value("umo", ""),
+            umo=umo,
             page=_query_int("page", 1),
             page_size=_query_int("page_size", 20),
         )
@@ -415,7 +424,19 @@ class CouncilWebAPI:
     async def clear_chat_context(self):
         body = await _body()
         umo = str(body.get("umo", "")).strip()
+        if not umo:
+            return error_response("必须指定群聊 umo", status_code=400)
+        logger.info(
+            "council chat-context clear requested umo=%s by=%s",
+            umo,
+            getattr(request, "username", None),
+        )
         deleted = await self.storage.clear_chat_messages(umo)
+        logger.info(
+            "council chat-context clear finished umo=%s deleted=%s",
+            umo,
+            deleted,
+        )
         return json_response({"success": True, "deleted": deleted})
 
     async def chat_context_media(self):

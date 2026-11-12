@@ -827,12 +827,31 @@ function bindEvents() {
     if (!button) return;
     downloadChatMedia(button.dataset.mediaPath, button.dataset.mediaName);
   });
+  let clearArmed = false;
+  let clearTimer = null;
+  const resetClearButton = () => {
+    clearArmed = false;
+    clearTimer = null;
+    $("#clear-chat-cache").textContent = "清空当前群";
+  };
   $("#clear-chat-cache").addEventListener("click", async () => {
     const umo = $("#chat-group-filter").value;
-    const label = umo || "全部群";
-    if (!window.confirm(`清空 ${label} 的群聊缓存？此操作无法恢复。`)) return;
+    if (!umo) {
+      toast("请先选择一个有缓存的群", "error");
+      return;
+    }
+    if (!clearArmed) {
+      clearArmed = true;
+      $("#clear-chat-cache").textContent = "再次点击确认";
+      toast("再次点击确认清空当前群缓存");
+      clearTimer = window.setTimeout(resetClearButton, 4000);
+      return;
+    }
+    clearTimeout(clearTimer);
+    clearArmed = false;
+    $("#clear-chat-cache").disabled = true;
     try {
-      const data = await apiPost("chat-context/clear", umo ? { umo } : {});
+      const data = await apiPost("chat-context/clear", { umo });
       const deleted = Number(data.deleted || 0);
       toast(
         deleted > 0 ? `已清除 ${deleted} 条群聊缓存` : "没有可清除的群聊缓存",
@@ -841,6 +860,9 @@ function bindEvents() {
       await loadChatRecords(1);
     } catch (error) {
       toast(error.message || "清除失败", "error");
+    } finally {
+      $("#clear-chat-cache").disabled = false;
+      resetClearButton();
     }
   });
   $("#refresh-all").addEventListener("click", async () => {
@@ -880,17 +902,28 @@ async function loadChatContextStats() {
     const select = $("#chat-group-filter");
     const current = select.value;
     select.innerHTML = "";
-    const all = document.createElement("option");
-    all.value = "";
-    all.textContent = "全部群";
-    select.append(all);
+    if (!items.length) {
+      select.disabled = true;
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "暂无缓存群";
+      select.append(option);
+      $("#chat-messages").innerHTML =
+        `<div class="empty">还没有持久化群聊记录</div>`;
+      $("#chat-records-count").textContent = "共 0 条";
+      $("#chat-load-older").hidden = true;
+      return;
+    }
+    select.disabled = false;
     for (const item of items) {
       const option = document.createElement("option");
       option.value = item.umo;
       option.textContent = `${item.umo}（${item.count} 条）`;
       select.append(option);
     }
-    select.value = items.some((item) => item.umo === current) ? current : "";
+    select.value = items.some((item) => item.umo === current)
+      ? current
+      : items[0].umo;
   } catch {
     $("#chat-context-stats").textContent = "";
   }
@@ -994,8 +1027,20 @@ function renderChatRecords() {
 }
 
 async function loadChatRecords(page = 1, loadOlder = false) {
+  const umo = $("#chat-group-filter").value;
+  if (!umo) {
+    state.chatRecords = {
+      page: 1,
+      page_size: state.chatRecords.page_size,
+      total: 0,
+      pages: 1,
+      items: [],
+      umo: "",
+    };
+    renderChatRecords();
+    return;
+  }
   try {
-    const umo = $("#chat-group-filter").value;
     const windowNode = $("#chat-window");
     const previousHeight = windowNode.scrollHeight;
     const previousTop = windowNode.scrollTop;
