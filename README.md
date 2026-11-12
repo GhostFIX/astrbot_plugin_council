@@ -44,7 +44,7 @@
   - `off`：完全关闭搜索。
   - `prefetch`：可选的 AnySearch 预检索，适合没有工具能力的模型。
 - **群聊上下文**：默认 `persistent`（仅白名单群、默认 50 条、持久化），也可选 `quote`（引用/回复的消息）、`recent`（OneBot 最近群聊）或 `off`；普通群消息不会触发默认 LLM 回复。
-- **WebUI 管理端**：讨论配置、成员管理、历史查询、完整记录查看、删除、导出、统计、运行中取消、版本状态检查。
+- **WebUI 管理端**：讨论配置、成员管理、历史查询、群聊记录检视、完整记录查看、删除、导出、统计、运行中取消。
 - **访问控制**：默认全开；支持白名单和黑名单，黑名单优先。
 
 ## 兼容性
@@ -158,7 +158,7 @@ allowed_umos 为空         → 允许
 - 输出：图片 / 文字 / 两者；
 - 搜索：native / off / prefetch，native 搜索轮数，AnySearch Key；
 - 安全审核：模式、审核模型、可编辑的审核系统 Prompt、失败策略、追加规则、拒绝提示；
-- 群聊上下文：off / persistent / quote / recent，最多消息数（0～200），最多字符数，图片识别、语音转文字、保存原始图片/音频（仅 OneBot）开关，清空缓存。
+- 群聊上下文：off / persistent / quote / recent，最多消息数（0～200），最多字符数，图片识别、语音转文字、保存原始图片/音频（仅 OneBot）开关；群聊记录支持清空当前群/全部缓存。
 
 配置保存在：
 
@@ -189,7 +189,7 @@ AstrBot/data/plugin_data/astrbot_plugin_council/settings.json
 
 默认 `persistent`，但**只记录插件配置白名单内的群**；白名单为空时不记录，所以刚安装不会采集任何群。普通群消息不会触发默认 LLM 回复，因为被动监听的 `is_at_or_wake_command` 仍为 false，AstrBot 只在被 @、唤醒或私聊时调用默认 AI。
 
-- `persistent`：持久化白名单群聊，默认保留 **50** 条（`0～200`，0 表示不记录），重启后仍在；可在 WebUI 清空。
+- `persistent`：持久化白名单群聊，默认保留 **50** 条（`0～200`，0 表示不记录），重启后仍在；超过数量会自动裁剪最旧记录。
 - `quote`：把 `/council` 作为回复发送时，引入被引用的那条消息；所有平台可用。
 - `recent`：在发起讨论时调用 OneBot `get_group_msg_history` 读取最近群聊；目前仅支持 `aiocqhttp`，其他平台或接口不可用时自动回退到 `quote`。
 - 最多字符数默认 3000；内容会截断并计入上下文 Token。
@@ -202,7 +202,7 @@ AstrBot/data/plugin_data/astrbot_plugin_council/settings.json
 - 语音：使用 AstrBot 当前 STT 提供商转文字；未配置或失败时保留 `[语音]` 占位。
 - 图片识别和 STT 在后台异步执行，不阻塞普通群消息。
 - 图片识别和 STT 会产生额外模型费用，可在 WebUI 中分别关闭。
-- **保存原始图片/音频（仅 OneBot）**：默认关闭；开启后原始文件保存在 `data/plugin_data/astrbot_plugin_council/media/`，单文件上限 10MB，数据库中只保存文件路径。记录被裁剪或清空时对应文件会一起删除。
+- **保存原始图片/音频（仅 OneBot）**：默认关闭；开启后原始文件保存在 `data/plugin_data/astrbot_plugin_council/media/`，单文件上限 10MB，数据库中只保存文件路径。记录被自动裁剪时对应文件会一起删除。
 - WebUI 的「群聊记录」tab 可以查看已持久化的文字、图片描述、语音转写，并下载已保存的原始图片/音频。
 
 ### prefetch
@@ -245,9 +245,8 @@ reason: ...
 - **历史记录**：按议题、状态、日期筛选；查看完整逐字稿；单条/批量删除；
 - **导出**：Markdown（完整记录）、JSON（结构化）、CSV（汇总）；
 - **统计**：场次、Token、平均轮数、发言数、每日趋势、成员参与度；
-- **群聊记录**：查看已持久化的群聊文字、图片描述、语音转写，按群筛选、分页，下载原始图片/音频（若已开启保存），清空全部或当前群缓存；
-- **运行中**：查看当前讨论并取消；
-- **版本状态**：页面右上角显示当前版本，并按需检查 GitHub Release / Tag / `metadata.yaml`，显示“已是最新 / 有新版本 / 无法检查”。检查结果缓存 6 小时，不会自动下载或覆盖插件；仓库不可访问（例如尚未发布）时只显示“检查更新”，不会报错阻断页面。
+- **群聊记录**：聊天气泡式只读视图，显示机器人自身消息、原始消息时间、日期分隔、图片描述、语音转写；按群筛选，顶部「加载更早」向前插入，下载原始图片/音频（若已开启保存），清空当前群或全部缓存；
+- **运行中**：查看当前讨论并取消。
 
 群内不提供完整记录，避免刷屏和隐私泄露；完整记录仅 WebUI 管理员可见。
 
@@ -292,7 +291,7 @@ AstrBot/data/plugin_data/astrbot_plugin_council/
 ```
 
 - 完整逐字稿保存在 `council.db`，受 `history_limit` 限制；
-- `persistent` 群聊缓存也在 `council.db` 的 `chat_messages` 表中，按群保留最近 N 条；默认只存文字与图片/语音的文字化结果，开启“保存原始图片/音频（仅 OneBot）”后才在 `data/plugin_data/astrbot_plugin_council/media/` 保存原始文件，数据库只存路径；可在 WebUI 清空；
+- `persistent` 群聊缓存也在 `council.db` 的 `chat_messages` 表中，按群保留最近 N 条；默认只存文字与图片/语音的文字化结果，开启“保存原始图片/音频（仅 OneBot）”后才在 `data/plugin_data/astrbot_plugin_council/media/` 保存原始文件，数据库只存路径；可在 WebUI「群聊记录」中清空当前群或全部缓存；
 - WebUI 管理员可查看所有会话的历史；
 - 聊天内只返回总结；
 - 不保存 LLM API Key；
@@ -359,7 +358,7 @@ astrbot_plugin_council/
 - 安全审核不能替代平台审核；
 - 群内只发总结，完整记录需要在 WebUI 导出；
 - 讨论配置是全局的，不按群单独覆盖；访问控制可按 UMO 配置；
-- 版本检查依赖 GitHub API / raw 的可达性；仓库未公开或网络不可达时显示“检查更新”，不会自动下载或覆盖插件。
+
 
 ## License
 

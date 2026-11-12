@@ -280,13 +280,12 @@ class CouncilPlugin(Star):
                 self_id = str(event.get_self_id() or "")
             except Exception:  # noqa: BLE001
                 pass
-            if sender_id and self_id and sender_id == self_id:
-                return
+            is_self = bool(sender_id and self_id and sender_id == self_id)
             try:
                 sender_name = str(event.get_sender_name() or "").strip()
             except Exception:  # noqa: BLE001
                 pass
-            sender_name = sender_name or sender_id or "群友"
+            sender_name = sender_name or sender_id or ("机器人" if is_self else "群友")
             message_obj = getattr(event, "message_obj", None)
             message_id = str(getattr(message_obj, "message_id", "") or "")
             try:
@@ -316,6 +315,8 @@ class CouncilPlugin(Star):
                     "text": text,
                     "has_image": bool(images),
                     "has_audio": bool(records),
+                    "is_self": is_self,
+                    "message_ts": timestamp,
                     "time_label": time_label,
                 }
             )

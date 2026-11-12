@@ -141,6 +141,8 @@ class CouncilStorage:
                     audio_text TEXT NOT NULL DEFAULT '',
                     has_image INTEGER NOT NULL DEFAULT 0,
                     has_audio INTEGER NOT NULL DEFAULT 0,
+                    is_self INTEGER NOT NULL DEFAULT 0,
+                    message_ts INTEGER NOT NULL DEFAULT 0,
                     time_label TEXT NOT NULL DEFAULT '',
                     media_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
@@ -171,6 +173,16 @@ class CouncilStorage:
                 conn.execute(
                     "ALTER TABLE chat_messages "
                     "ADD COLUMN media_json TEXT NOT NULL DEFAULT '[]'"
+                )
+            if "is_self" not in columns:
+                conn.execute(
+                    "ALTER TABLE chat_messages "
+                    "ADD COLUMN is_self INTEGER NOT NULL DEFAULT 0"
+                )
+            if "message_ts" not in columns:
+                conn.execute(
+                    "ALTER TABLE chat_messages "
+                    "ADD COLUMN message_ts INTEGER NOT NULL DEFAULT 0"
                 )
         try:
             os.chmod(self.path, 0o600)
@@ -506,8 +518,9 @@ class CouncilStorage:
                 """
                 INSERT OR IGNORE INTO chat_messages
                     (umo, dedupe_key, sender_id, sender_name, text,
-                     has_image, has_audio, time_label, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     has_image, has_audio, is_self, message_ts,
+                     time_label, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data["umo"],
@@ -517,6 +530,8 @@ class CouncilStorage:
                     str(data.get("text", ""))[:1500],
                     1 if data.get("has_image") else 0,
                     1 if data.get("has_audio") else 0,
+                    1 if data.get("is_self") else 0,
+                    int(data.get("message_ts", 0) or 0),
                     str(data.get("time_label", ""))[:8],
                     data.get("created_at") or utc_now_iso(),
                 ),
@@ -716,22 +731,6 @@ class CouncilStorage:
             "pages": max(1, (total + page_size - 1) // page_size),
         }
 
-    async def chat_context_stats(self) -> list[dict[str, Any]]:
-        async with self._lock:
-            return await asyncio.to_thread(self._chat_context_stats_sync)
-
-    def _chat_context_stats_sync(self) -> list[dict[str, Any]]:
-        with self._db() as conn:
-            rows = conn.execute(
-                """
-                SELECT umo, COUNT(*) AS count, MAX(created_at) AS last_at
-                FROM chat_messages
-                GROUP BY umo
-                ORDER BY count DESC
-                """
-            ).fetchall()
-        return [dict(row) for row in rows]
-
     async def clear_chat_messages(self, umo: str = "") -> int:
         async with self._lock:
             return await asyncio.to_thread(
@@ -755,6 +754,22 @@ class CouncilStorage:
                 cursor = conn.execute("DELETE FROM chat_messages")
             self._delete_media_for_rows(conn, rows)
             return int(cursor.rowcount or 0)
+
+    async def chat_context_stats(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return await asyncio.to_thread(self._chat_context_stats_sync)
+
+    def _chat_context_stats_sync(self) -> list[dict[str, Any]]:
+        with self._db() as conn:
+            rows = conn.execute(
+                """
+                SELECT umo, COUNT(*) AS count, MAX(created_at) AS last_at
+                FROM chat_messages
+                GROUP BY umo
+                ORDER BY count DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     async def stats(self, days: int = 30) -> dict[str, Any]:
         async with self._lock:

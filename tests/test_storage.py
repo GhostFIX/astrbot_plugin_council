@@ -172,8 +172,26 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["sender"], "B")
-        deleted = await self.storage.clear_chat_messages()
+        deleted = await self.storage.trim_chat_messages(
+            "aiocqhttp:group:1", 0
+        )
         self.assertEqual(deleted, 1)
+        await self.storage.add_chat_message(
+            {
+                "umo": "aiocqhttp:group:1",
+                "dedupe_key": "m3",
+                "sender_name": "C",
+                "text": "清空测试",
+                "is_self": True,
+                "message_ts": 1700000000,
+                "time_label": "11:00",
+            }
+        )
+        records = await self.storage.get_chat_records()
+        self.assertTrue(records["items"][0]["is_self"])
+        self.assertEqual(records["items"][0]["message_ts"], 1700000000)
+        self.assertEqual(await self.storage.clear_chat_messages(), 1)
+        self.assertEqual((await self.storage.get_chat_records())["total"], 0)
 
     async def test_refused_topic(self):
         await self.storage.create_session(

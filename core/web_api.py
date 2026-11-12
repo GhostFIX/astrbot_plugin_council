@@ -43,7 +43,6 @@ from .constants import PLUGIN_NAME, PLUGIN_VERSION
 from .prompts import SAFETY_SYSTEM
 from .search import AnySearchClient, sources_for_storage
 from .storage import session_to_markdown, sessions_to_csv, utc_now_iso
-from .update_check import UpdateChecker
 
 
 def _query_value(name: str, default: str = "") -> str:
@@ -86,12 +85,10 @@ class CouncilWebAPI:
         self.settings_store = plugin.settings_store
         self.storage = plugin.storage
         self.engine = plugin.engine
-        self.update_checker = UpdateChecker(current_version=PLUGIN_VERSION)
 
     def register(self) -> None:
         routes = [
             ("/meta", self.meta, ["GET"], "Council providers/personas metadata"),
-            ("/version", self.version, ["GET"], "Check plugin update status"),
             ("/settings", self.settings, ["GET"], "Read council settings"),
             (
                 "/settings/save",
@@ -141,17 +138,18 @@ class CouncilWebAPI:
                 "Inspect persistent group messages",
             ),
             (
-                "/chat-context/media",
-                self.chat_context_media,
-                ["GET"],
-                "Download saved raw group media",
-            ),
-            (
                 "/chat-context/clear",
                 self.clear_chat_context,
                 ["POST"],
                 "Clear persistent group context",
             ),
+            (
+                "/chat-context/media",
+                self.chat_context_media,
+                ["GET"],
+                "Download saved raw group media",
+            ),
+
         ]
         for route, handler, methods, desc in routes:
             self.context.register_web_api(
@@ -224,11 +222,6 @@ class CouncilWebAPI:
                 "username": getattr(request, "username", None),
             }
         )
-
-    async def version(self):
-        force = _query_value("force", "").lower() in {"1", "true", "yes"}
-        data = await self.update_checker.check(force=force)
-        return json_response({"success": True, **data})
 
     async def settings(self):
         data = self.settings_store.load()
@@ -419,6 +412,12 @@ class CouncilWebAPI:
         )
         return json_response({"success": True, **data})
 
+    async def clear_chat_context(self):
+        body = await _body()
+        umo = str(body.get("umo", "")).strip()
+        deleted = await self.storage.clear_chat_messages(umo)
+        return json_response({"success": True, "deleted": deleted})
+
     async def chat_context_media(self):
         relative = _query_value("path", "")
         try:
@@ -430,12 +429,6 @@ class CouncilWebAPI:
             )
         except Exception:  # noqa: BLE001
             return error_response("媒体文件不存在", status_code=404)
-
-    async def clear_chat_context(self):
-        body = await _body()
-        umo = str(body.get("umo", "")).strip()
-        deleted = await self.storage.clear_chat_messages(umo)
-        return json_response({"success": True, "deleted": deleted})
 
     async def cancel_active(self):
         body = await _body()

@@ -17,8 +17,7 @@
           </div>
         </div>
         <div class="top-actions">
-          <span class="version" id="version">v1.2.0</span>
-          <button class="version update-check" id="check-update" title="检查更新">检查更新</button>
+          <span class="version" id="version">v1.2.1</span>
           <button class="icon-btn" id="refresh-all" title="刷新">刷新</button>
         </div>
       </header>
@@ -234,7 +233,6 @@
                 </label>
               </div>
               <div class="row-actions" style="margin-top:10px">
-                <button type="button" class="btn danger ghost" id="clear-chat-context">清空群聊缓存</button>
                 <span class="muted" id="chat-context-stats"></span>
               </div>
               <div class="hint">
@@ -316,21 +314,18 @@
               </div>
               <div class="row-actions">
                 <button class="btn ghost" id="refresh-chat-records">刷新</button>
-                <button class="btn danger ghost" id="clear-chat-group">清空当前筛选</button>
+                <button class="btn danger ghost" id="clear-chat-cache">清空缓存</button>
               </div>
             </div>
             <div class="filters">
               <select id="chat-group-filter"><option value="">全部群</option></select>
               <button class="btn ghost" id="chat-records-search">查看</button>
-            </div>
-            <div id="chat-records" class="chat-records"></div>
-            <div class="pager">
               <span class="muted" id="chat-records-count"></span>
-              <div class="row-actions">
-                <button class="btn ghost" id="chat-prev">上一页</button>
-                <span class="muted" id="chat-page-info">1 / 1</span>
-                <button class="btn ghost" id="chat-next">下一页</button>
-              </div>
+            </div>
+            <div class="chat-window" id="chat-window">
+              <button class="btn ghost chat-load-older" id="chat-load-older" hidden>加载更早</button>
+              <div class="chat-messages" id="chat-messages"></div>
+              <div class="chat-readonly">只读 · 来自持久化群聊缓存</div>
             </div>
           </div>
         </section>
