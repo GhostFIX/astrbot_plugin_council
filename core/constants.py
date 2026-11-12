@@ -1,0 +1,3 @@
+PLUGIN_NAME = "astrbot_plugin_council"
+PLUGIN_VERSION = "1.0.0"
+DATA_DIR_NAME = PLUGIN_NAME

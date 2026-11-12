@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 圆桌 · Council</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">圆</div>
+          <div>
+            <h1>AI 圆桌 <span>Council</span></h1>
+            <p>多模型 · 多人格 · 结构化讨论</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="version" id="version">v1.0.0</span>
+          <button class="icon-btn" id="refresh-all" title="刷新">刷新</button>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="config" role="tab">讨论配置</button>
+        <button class="tab" data-tab="history" role="tab">历史记录</button>
+        <button class="tab" data-tab="stats" role="tab">统计</button>
+        <button class="tab" data-tab="active" role="tab">运行中</button>
+      </nav>
+
+      <main>
+        <section class="panel active" id="panel-config">
+          <form id="settings-form" autocomplete="off">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2>讨论成员</h2>
+                  <p class="muted">
+                    2～6 位成员。人格与 Provider 直接读取 AstrBot 当前配置；
+                    Provider 留空表示跟随当前会话模型。
+                  </p>
+                </div>
+                <button type="button" class="btn ghost" id="add-member">添加成员</button>
+              </div>
+              <div id="members" class="members"></div>
+              <div class="hint">
+                同一个 persona 可以重复使用，用不同的显示名、关注角度和初始倾向形成多角色讨论。
+              </div>
+            </div>
+
+            <div class="grid two">
+              <div class="card">
+                <h2>讨论参数</h2>
+                <div class="form-grid">
+                  <label>轮数
+                    <input type="number" name="rounds" min="1" max="6" step="1" />
+                  </label>
+                  <label>总 Token 预算
+                    <input type="number" name="max_total_tokens" min="4000" max="200000" step="1000" />
+                  </label>
+                  <label>单次发言上限
+                    <input type="number" name="max_tokens_per_speech" min="128" max="2048" step="32" />
+                  </label>
+                  <label>上下文上限（字符）
+                    <input type="number" name="max_context_chars" min="2000" max="30000" step="500" />
+                  </label>
+                  <label>单次请求超时（秒）
+                    <input type="number" name="request_timeout_sec" min="10" max="300" step="5" />
+                  </label>
+                  <label>整场时长上限（秒）
+                    <input type="number" name="max_duration_sec" min="30" max="1800" step="30" />
+                  </label>
+                  <label>冷却时间（秒）
+                    <input type="number" name="cooldown_sec" min="0" max="3600" step="5" />
+                  </label>
+                  <label>总结输出上限
+                    <input type="number" name="summary_max_tokens" min="256" max="2048" step="64" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="card">
+                <h2>群内输出</h2>
+                <p class="muted">
+                  群内始终只发送总结；完整逐字稿保存在后台历史中。
+                </p>
+                <div class="form-grid">
+                  <label>输出形式
+                    <select name="render_mode">
+                      <option value="image">图片</option>
+                      <option value="text">文字</option>
+                      <option value="both">图片 + 文字</option>
+                    </select>
+                  </label>
+                  <label>文字上限（字符）
+                    <input type="number" name="max_text_chars" min="1000" max="50000" step="1000" />
+                  </label>
+                  <label>总结模型
+                    <select name="moderator_provider_id" id="moderator-provider"></select>
+                  </label>
+                </div>
+                <div class="hint">
+                  总结模型留空时使用当前会话模型；它只负责中立总结，不参与成员发言。
+                </div>
+              </div>
+            </div>
+
+            <div class="grid two">
+              <div class="card">
+                <h2>搜索</h2>
+                <p class="muted">
+                  默认 native：不预搜索；仅当 AstrBot 已配置搜索工具、且模型支持工具调用时，
+                  由模型自行决定是否搜索。没有工具就不搜索。
+                </p>
+                <div class="form-grid">
+                  <label>模式
+                    <select name="search_mode">
+                      <option value="native">native · 交给模型工具</option>
+                      <option value="off">off · 完全关闭</option>
+                      <option value="prefetch">prefetch · AnySearch 预检索</option>
+                    </select>
+                  </label>
+                  <label>native 搜索轮数
+                    <input type="number" name="native_rounds" min="1" max="6" step="1" />
+                  </label>
+                  <label>prefetch 结果数
+                    <input type="number" name="search_max_results" min="1" max="10" step="1" />
+                  </label>
+                  <label>搜索超时（秒）
+                    <input type="number" name="search_timeout_sec" min="5" max="60" step="1" />
+                  </label>
+                  <label>搜索语言
+                    <select name="search_language">
+                      <option value="auto">自动</option>
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="field-stack">
+                  <label>AnySearch API Key
+                    <input type="password" name="anysearch_api_key" id="anysearch-key" placeholder="留空使用匿名免费额度" />
+                  </label>
+                  <label class="checkline">
+                    <input type="checkbox" id="clear-anysearch-key" />
+                    清除已保存的 Key
+                  </label>
+                  <div class="row-actions">
+                    <button type="button" class="btn ghost" id="test-search">测试搜索</button>
+                    <span class="muted" id="search-test-result"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <h2>议题安全审核</h2>
+                <p class="muted">
+                  讨论前先做一次低成本审核。LLM 审核是概率性的，不能保证 100% 规避平台风险。
+                </p>
+                <div class="form-grid">
+                  <label>模式
+                    <select name="safety_mode">
+                      <option value="standard">standard · 默认</option>
+                      <option value="strict">strict · 更严格</option>
+                      <option value="off">off · 关闭</option>
+                    </select>
+                  </label>
+                  <label>审核模型
+                    <select name="safety_provider_id" id="safety-provider"></select>
+                  </label>
+                  <label>失败策略
+                    <select name="safety_fail_mode">
+                      <option value="closed">closed · 审核不可用则拒绝</option>
+                      <option value="open">open · 审核不可用则放行</option>
+                    </select>
+                  </label>
+                  <label class="checkline">
+                    <input type="checkbox" name="store_refused_topic" />
+                    保存被拒绝议题的原文
+                  </label>
+                </div>
+                <div class="field-stack">
+                  <label>拒绝提示
+                    <input type="text" name="refuse_message" maxlength="200" />
+                  </label>
+                  <label>追加规则
+                    <textarea name="safety_extra_rules" rows="4" maxlength="2000" placeholder="可选。每行一条，最多 2000 字。"></textarea>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="sticky-actions">
+              <span class="muted" id="save-state">配置仅影响下一次讨论</span>
+              <div class="row-actions">
+                <button type="button" class="btn ghost" id="reset-settings">恢复默认</button>
+                <button type="submit" class="btn primary" id="save-settings">保存配置</button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel" id="panel-history">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>历史记录</h2>
+                <p class="muted">群内只发送总结；这里可以查看完整逐字稿并导出。</p>
+              </div>
+              <div class="row-actions">
+                <button class="btn ghost" id="export-csv">导出选中 CSV</button>
+                <button class="btn danger ghost" id="delete-selected">删除选中</button>
+              </div>
+            </div>
+            <div class="filters">
+              <input type="search" id="history-q" placeholder="搜索议题、总结或成员" />
+              <select id="history-status">
+                <option value="">全部状态</option>
+                <option value="completed">已完成</option>
+                <option value="cancelled">已停止</option>
+                <option value="refused">已拒绝</option>
+                <option value="failed">失败</option>
+                <option value="running">进行中</option>
+              </select>
+              <input type="date" id="history-from" title="开始日期" />
+              <input type="date" id="history-to" title="结束日期" />
+              <button class="btn ghost" id="history-search">筛选</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="check"><input type="checkbox" id="select-all" /></th>
+                    <th>时间</th>
+                    <th>议题</th>
+                    <th>状态</th>
+                    <th>轮数</th>
+                    <th>Token</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="history-body"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <span class="muted" id="history-count"></span>
+              <div class="row-actions">
+                <button class="btn ghost" id="prev-page">上一页</button>
+                <span class="muted" id="page-info">1 / 1</span>
+                <button class="btn ghost" id="next-page">下一页</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-stats">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>统计</h2>
+                <p class="muted">基于本地历史记录，仅 Dashboard 管理员可见。</p>
+              </div>
+              <select id="stats-days">
+                <option value="7">最近 7 天</option>
+                <option value="30" selected>最近 30 天</option>
+                <option value="90">最近 90 天</option>
+                <option value="0">全部</option>
+              </select>
+            </div>
+            <div class="stat-grid" id="stat-cards"></div>
+            <div class="grid two">
+              <div>
+                <h3>每日讨论</h3>
+                <div class="bars" id="daily-bars"></div>
+              </div>
+              <div>
+                <h3>成员参与</h3>
+                <div class="rank-list" id="top-members"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-active">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>运行中的讨论</h2>
+                <p class="muted">管理员可以在这里停止卡住的讨论。</p>
+              </div>
+              <button class="btn ghost" id="refresh-active">刷新</button>
+            </div>
+            <div id="active-list" class="active-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <div class="modal-backdrop" id="modal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <h2 id="modal-title">完整记录</h2>
+          <button class="icon-btn" id="modal-close" aria-label="关闭">×</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-foot">
+          <button class="btn ghost" id="modal-export-md">导出 Markdown</button>
+          <button class="btn ghost" id="modal-export-json">导出 JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

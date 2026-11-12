@@ -1,0 +1,50 @@
+{
+  "enabled": {
+    "description": "启用圆桌讨论",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后 /council 不再响应。"
+  },
+  "allowed_umos": {
+    "description": "允许使用的会话白名单",
+    "type": "list",
+    "default": [],
+    "_special": "umo",
+    "hint": "留空表示不限制；填写后只有这些会话可以使用。"
+  },
+  "blocked_umos": {
+    "description": "禁止使用的会话黑名单",
+    "type": "list",
+    "default": [],
+    "_special": "umo",
+    "hint": "优先级高于白名单；同时在黑白名单中的会话会被拒绝。"
+  },
+  "history_limit": {
+    "description": "历史记录最大保留条数",
+    "type": "int",
+    "default": 500,
+    "slider": {
+      "min": 50,
+      "max": 5000,
+      "step": 50
+    },
+    "hint": "超过后自动删除最旧的记录。完整逐字稿也受此限制。"
+  },
+  "max_concurrent": {
+    "description": "全局同时进行的讨论数",
+    "type": "int",
+    "default": 1,
+    "slider": {
+      "min": 1,
+      "max": 4,
+      "step": 1
+    },
+    "hint": "修改后需要重载插件生效。"
+  },
+  "debug_log": {
+    "description": "输出调试日志",
+    "type": "bool",
+    "default": false,
+    "hint": "不会记录 API Key、完整议题或私密内容。"
+  }
+}

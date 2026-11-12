@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --paper: #f6f1e7;
+        --paper-deep: #ebe2d2;
+        --ink: #20201d;
+        --muted: #746c60;
+        --line: #ddd2bf;
+        --gold: #a86d2c;
+        --gold-soft: #f0dfc4;
+        --white: #fffdf8;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); }
+      body {
+        font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC",
+          "Source Han Sans SC", system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .page {
+        width: 860px;
+        padding: 46px 48px 36px;
+        background:
+          radial-gradient(circle at 88% 4%, rgba(168, 109, 44, 0.13), transparent 28%),
+          radial-gradient(circle at 4% 94%, rgba(168, 109, 44, 0.09), transparent 24%),
+          var(--paper);
+      }
+      .eyebrow {
+        color: var(--gold);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0 0 18px;
+        font-size: 30px;
+        line-height: 1.35;
+        letter-spacing: -0.02em;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .members {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 24px;
+      }
+      .member {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 11px 6px 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 253, 248, 0.72);
+      }
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--gold-soft);
+        color: var(--gold);
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .member-text { display: inline-flex; align-items: baseline; gap: 6px; }
+      .member-text b { font-size: 12px; }
+      .member-text small { color: var(--muted); font-size: 10px; }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 253, 248, 0.86);
+        padding: 24px 26px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset;
+      }
+      .card-label {
+        color: var(--gold);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        margin-bottom: 12px;
+      }
+      .prose {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 15px;
+        line-height: 1.85;
+      }
+      .sources ul { margin: 0; padding: 0; list-style: none; }
+      .sources li {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 2px 8px;
+        padding: 9px 0;
+        border-top: 1px dashed var(--line);
+        font-size: 12px;
+      }
+      .sources li:first-child { border-top: 0; }
+      .source-idx { color: var(--gold); font-weight: 800; }
+      .source-title { color: var(--ink); font-weight: 600; word-break: break-word; }
+      .source-url {
+        grid-column: 2;
+        color: var(--muted);
+        font-size: 10px;
+        word-break: break-all;
+      }
+      .footer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .footer span { white-space: nowrap; }
+      .brand { color: var(--gold); font-weight: 700; letter-spacing: 0.08em; }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="eyebrow">AI Council · 圆桌讨论</div>
+      <h1>{{ topic_html|safe }}</h1>
+      <div class="members">{{ members_html|safe }}</div>
+      <section class="card summary">
+        <div class="card-label">讨论总结</div>
+        <div class="prose">{{ summary_html|safe }}</div>
+      </section>
+      {{ sources_html|safe }}
+      <footer class="footer">
+        <div>{{ meta_html|safe }}</div>
+        <div class="brand">AI 圆桌 · Council</div>
+      </footer>
+    </main>
+  </body>
+</html>

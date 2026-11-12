@@ -1,0 +1,1 @@
+"""AstrBot Council plugin package."""

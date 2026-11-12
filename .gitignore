@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tests / tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Plugin data (never commit)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Local secrets
+.env
+.env.*
+settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
