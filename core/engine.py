@@ -19,6 +19,7 @@ from .prompts import (
     build_system_prompt,
     clip_text,
     fallback_summary,
+    format_chat_context,
     render_transcript,
     sanitize_topic,
 )
@@ -215,7 +216,13 @@ class CouncilEngine:
             run.status = "stopping"
             return True, "正在停止，当前模型调用返回后会结束"
 
-    async def run(self, *, event: Any, topic: str) -> RunResult:
+    async def run(
+        self,
+        *,
+        event: Any,
+        topic: str,
+        chat_context: list[dict[str, Any]] | None = None,
+    ) -> RunResult:
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         starter_id = str(
             getattr(event, "get_sender_id", lambda: "")() or ""
@@ -283,6 +290,7 @@ class CouncilEngine:
                 session_id=session_id,
                 run=run,
                 started_at=started_at,
+                chat_context=chat_context or [],
             )
         except asyncio.CancelledError:
             await self._finish_cancelled(run, started_at)
@@ -326,9 +334,18 @@ class CouncilEngine:
         session_id: str,
         run: ActiveRun,
         started_at: float,
+        chat_context: list[dict[str, Any]],
     ) -> RunResult:
         settings = self.settings_store.load()
         settings = copy.deepcopy(settings)
+        chat_text = ""
+        chat_cfg = settings.get("chat_context", {})
+        if str(chat_cfg.get("mode", "off")) != "off" and chat_context:
+            max_messages = int(chat_cfg.get("max_messages", 30) or 30)
+            chat_text = format_chat_context(
+                chat_context[-max_messages:],
+                max_chars=int(chat_cfg.get("max_chars", 3000) or 3000),
+            )
         members, warnings = await self._resolve_members(umo, settings)
         if len(members) < 2:
             return RunResult(
@@ -486,6 +503,7 @@ class CouncilEngine:
                     transcript=transcript,
                     search_card=search_card if use_search_card else "",
                     compact_sources=compact_sources if use_compact else "",
+                    chat_context=chat_text,
                     max_context_chars=max_context,
                 )
                 system_prompt = build_system_prompt(
@@ -622,6 +640,7 @@ class CouncilEngine:
                 speeches=speeches,
                 members=public_members,
                 search_bundle=search_bundle,
+                chat_context=chat_text,
                 budget=budget,
                 current_provider=current_provider,
             )
@@ -947,6 +966,7 @@ class CouncilEngine:
         speeches: list[dict[str, Any]],
         members: list[dict[str, Any]],
         search_bundle: SearchBundle,
+        chat_context: str,
         budget: TokenBudget,
         current_provider: str,
     ) -> tuple[str, bool]:
@@ -959,6 +979,7 @@ class CouncilEngine:
             search_card=format_search_card(search_bundle)
             if search_bundle.ok
             else "",
+            chat_context=chat_context,
             max_context_chars=14000,
         )
         provider = (

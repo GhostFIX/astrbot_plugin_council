@@ -17,7 +17,8 @@
           </div>
         </div>
         <div class="top-actions">
-          <span class="version" id="version">v1.0.0</span>
+          <span class="version" id="version">v1.1.0</span>
+          <button class="version update-check" id="check-update" title="检查更新">检查更新</button>
           <button class="icon-btn" id="refresh-all" title="刷新">刷新</button>
         </div>
       </header>
@@ -60,7 +61,7 @@
                     <input type="number" name="max_total_tokens" min="4000" max="200000" step="1000" />
                   </label>
                   <label>单次发言上限
-                    <input type="number" name="max_tokens_per_speech" min="128" max="2048" step="32" />
+                    <input type="number" name="max_tokens_per_speech" min="128" max="2048" step="1" />
                   </label>
                   <label>上下文上限（字符）
                     <input type="number" name="max_context_chars" min="2000" max="30000" step="500" />
@@ -75,7 +76,7 @@
                     <input type="number" name="cooldown_sec" min="0" max="3600" step="5" />
                   </label>
                   <label>总结输出上限
-                    <input type="number" name="summary_max_tokens" min="256" max="2048" step="64" />
+                    <input type="number" name="summary_max_tokens" min="256" max="2048" step="1" />
                   </label>
                 </div>
               </div>
@@ -187,7 +188,54 @@
                   <label>追加规则
                     <textarea name="safety_extra_rules" rows="4" maxlength="2000" placeholder="可选。每行一条，最多 2000 字。"></textarea>
                   </label>
+                  <label>审核系统 Prompt
+                    <textarea name="safety_system_prompt" rows="10" maxlength="6000" placeholder="留空将使用内置审核 Prompt"></textarea>
+                  </label>
+                  <div class="row-actions">
+                    <button type="button" class="btn ghost" id="restore-safety-prompt">恢复默认审核 Prompt</button>
+                  </div>
                 </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>群聊上下文</h2>
+              <p class="muted">
+                默认关闭。不会后台监听群消息，也不会把聊天记录写入磁盘；
+                只在发起讨论时按需读取一次。
+              </p>
+              <div class="form-grid">
+                <label>引入方式
+                  <select name="chat_context_mode">
+                    <option value="persistent">persistent · 持久化白名单群聊（默认）</option>
+                    <option value="off">off · 不记录</option>
+                    <option value="quote">quote · 引用/回复的消息</option>
+                    <option value="recent">recent · 最近群聊（OneBot）</option>
+                  </select>
+                </label>
+                <label>最多消息数（0～200）
+                  <input type="number" name="chat_context_max_messages" min="0" max="200" step="1" />
+                </label>
+                <label>最多字符数
+                  <input type="number" name="chat_context_max_chars" min="500" max="10000" step="100" />
+                </label>
+                <label class="checkline">
+                  <input type="checkbox" name="chat_context_vision_enabled" />
+                  图片识别
+                </label>
+                <label class="checkline">
+                  <input type="checkbox" name="chat_context_stt_enabled" />
+                  语音转文字
+                </label>
+              </div>
+              <div class="row-actions" style="margin-top:10px">
+                <button type="button" class="btn danger ghost" id="clear-chat-context">清空群聊缓存</button>
+                <span class="muted" id="chat-context-stats"></span>
+              </div>
+              <div class="hint">
+                persistent 只记录插件配置白名单中的群；白名单为空时不记录。普通群消息不会触发默认 LLM 回复。
+                图片识别使用当前会话模型，语音转文字使用 AstrBot 当前 STT 提供商；不支持时会保留 [图片]/[语音] 占位。
+                quote 适用于所有平台；recent 仅支持 OneBot / aiocqhttp，失败时回退 quote。
               </div>
             </div>
 

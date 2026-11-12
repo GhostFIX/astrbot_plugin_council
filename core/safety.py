@@ -73,6 +73,7 @@ class SafetyReviewer:
             topic=topic,
             mode=mode,
             extra_rules=str(safety.get("extra_rules", "")),
+            system_prompt=str(safety.get("system_prompt", "")),
         )
         timeout = max(
             10,

@@ -1,9 +1,11 @@
 import unittest
 
 from core.prompts import (
+    build_safety_prompt,
     build_speech_prompt,
     build_system_prompt,
     fallback_summary,
+    format_chat_context,
     parse_safety_decision,
     render_transcript,
     sanitize_topic,
@@ -61,6 +63,31 @@ class PromptTests(unittest.TestCase):
         self.assertIn("<topic>", text)
         self.assertIn("第 2 / 3 轮", text)
         self.assertIn("[S1]", text)
+
+    def test_custom_safety_prompt(self):
+        system, user = build_safety_prompt(
+            topic="测试议题",
+            mode="standard",
+            system_prompt="CUSTOM SAFETY RULE",
+        )
+        self.assertIn("CUSTOM SAFETY RULE", system)
+        self.assertIn("<topic>", user)
+
+    def test_chat_context_section(self):
+        chat = format_chat_context(
+            [{"sender": "A", "text": "群聊内容", "time": "10:00"}]
+        )
+        self.assertIn("A", chat)
+        prompt = build_speech_prompt(
+            topic="议题",
+            member={"display_name": "B"},
+            round_no=1,
+            total_rounds=2,
+            transcript="无",
+            chat_context=chat,
+        )
+        self.assertIn("近期群聊", prompt)
+        self.assertIn("群聊内容", prompt)
 
     def test_parse_safety_json(self):
         parsed = parse_safety_decision(

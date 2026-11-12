@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .prompts import SAFETY_SYSTEM
+
 SETTINGS_VERSION = 1
 
 DEFAULT_REFUSE_MESSAGE = (
@@ -64,11 +66,20 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "safety": {
         "mode": "standard",
         "provider_id": "",
+        "system_prompt": SAFETY_SYSTEM,
         "extra_rules": "",
         "fail_mode": "closed",
         "store_refused_topic": False,
         "refuse_message": DEFAULT_REFUSE_MESSAGE,
         "max_tokens": 220,
+    },
+    "chat_context": {
+        "mode": "persistent",
+        "max_messages": 50,
+        "max_chars": 3000,
+        "vision_enabled": True,
+        "stt_enabled": True,
+        "vision_max_tokens": 200,
     },
     "moderator": {
         "provider_id": "",
@@ -353,6 +364,12 @@ def validate_settings(
             {"off", "standard", "strict"},
         ),
         "provider_id": safety_provider_id,
+        "system_prompt": _as_text(
+            safety_raw.get("system_prompt"),
+            "safety.system_prompt",
+            max_len=6000,
+        )
+        or SAFETY_SYSTEM,
         "extra_rules": _as_text(
             safety_raw.get("extra_rules"),
             "safety.extra_rules",
@@ -381,6 +398,41 @@ def validate_settings(
         ),
     }
 
+    chat_raw = _need_dict(merged.get("chat_context"), "chat_context")
+    chat_context = {
+        "mode": _as_choice(
+            chat_raw.get("mode"),
+            "chat_context.mode",
+            {"off", "quote", "recent", "persistent"},
+        ),
+        "max_messages": _as_int(
+            chat_raw.get("max_messages"),
+            "chat_context.max_messages",
+            0,
+            200,
+        ),
+        "max_chars": _as_int(
+            chat_raw.get("max_chars"),
+            "chat_context.max_chars",
+            500,
+            10000,
+        ),
+        "vision_enabled": _as_bool(
+            chat_raw.get("vision_enabled"),
+            "chat_context.vision_enabled",
+        ),
+        "stt_enabled": _as_bool(
+            chat_raw.get("stt_enabled"),
+            "chat_context.stt_enabled",
+        ),
+        "vision_max_tokens": _as_int(
+            chat_raw.get("vision_max_tokens"),
+            "chat_context.vision_max_tokens",
+            64,
+            1024,
+        ),
+    }
+
     moderator_raw = _need_dict(merged.get("moderator"), "moderator")
     moderator_provider_id = _as_text(
         moderator_raw.get("provider_id"),
@@ -401,6 +453,7 @@ def validate_settings(
         "output": output,
         "search": search,
         "safety": safety,
+        "chat_context": chat_context,
         "moderator": {"provider_id": moderator_provider_id},
     }
 

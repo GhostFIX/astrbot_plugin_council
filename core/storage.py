@@ -129,6 +129,23 @@ class CouncilStorage:
                     snippet TEXT NOT NULL DEFAULT '',
                     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    umo TEXT NOT NULL,
+                    dedupe_key TEXT NOT NULL,
+                    sender_id TEXT NOT NULL DEFAULT '',
+                    sender_name TEXT NOT NULL DEFAULT '',
+                    text TEXT NOT NULL DEFAULT '',
+                    image_text TEXT NOT NULL DEFAULT '',
+                    audio_text TEXT NOT NULL DEFAULT '',
+                    has_image INTEGER NOT NULL DEFAULT 0,
+                    has_audio INTEGER NOT NULL DEFAULT 0,
+                    time_label TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    UNIQUE (umo, dedupe_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_messages_umo
+                    ON chat_messages(umo, id DESC);
                 CREATE INDEX IF NOT EXISTS idx_sessions_created
                     ON sessions(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_sessions_status
@@ -464,6 +481,180 @@ class CouncilStorage:
             cursor = conn.execute(
                 f"DELETE FROM sessions WHERE id IN ({placeholders})", tuple(ids)
             )
+            return int(cursor.rowcount or 0)
+
+    async def add_chat_message(self, data: dict[str, Any]) -> int:
+        async with self._lock:
+            return await asyncio.to_thread(self._add_chat_message_sync, data)
+
+    def _add_chat_message_sync(self, data: dict[str, Any]) -> int:
+        with self._db() as conn:
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO chat_messages
+                    (umo, dedupe_key, sender_id, sender_name, text,
+                     has_image, has_audio, time_label, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data["umo"],
+                    data["dedupe_key"],
+                    str(data.get("sender_id", ""))[:100],
+                    str(data.get("sender_name", ""))[:80],
+                    str(data.get("text", ""))[:1500],
+                    1 if data.get("has_image") else 0,
+                    1 if data.get("has_audio") else 0,
+                    str(data.get("time_label", ""))[:8],
+                    data.get("created_at") or utc_now_iso(),
+                ),
+            )
+            if cursor.rowcount <= 0:
+                return 0
+            return int(cursor.lastrowid or 0)
+
+    async def update_chat_message_media(
+        self,
+        message_row_id: int,
+        *,
+        image_text: str = "",
+        audio_text: str = "",
+    ) -> None:
+        async with self._lock:
+            await asyncio.to_thread(
+                self._update_chat_message_media_sync,
+                message_row_id,
+                image_text,
+                audio_text,
+            )
+
+    def _update_chat_message_media_sync(
+        self,
+        message_row_id: int,
+        image_text: str,
+        audio_text: str,
+    ) -> None:
+        with self._db() as conn:
+            conn.execute(
+                """
+                UPDATE chat_messages
+                SET image_text = ?, audio_text = ?
+                WHERE id = ?
+                """,
+                (
+                    str(image_text or "")[:1500],
+                    str(audio_text or "")[:2000],
+                    int(message_row_id),
+                ),
+            )
+
+    async def trim_chat_messages(self, umo: str, limit: int) -> int:
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._trim_chat_messages_sync, umo, limit
+            )
+
+    def _trim_chat_messages_sync(self, umo: str, limit: int) -> int:
+        limit = max(0, int(limit))
+        with self._db() as conn:
+            if limit == 0:
+                cursor = conn.execute(
+                    "DELETE FROM chat_messages WHERE umo = ?", (umo,)
+                )
+                return int(cursor.rowcount or 0)
+            cursor = conn.execute(
+                """
+                DELETE FROM chat_messages
+                WHERE umo = ?
+                  AND id NOT IN (
+                      SELECT id FROM chat_messages
+                      WHERE umo = ?
+                      ORDER BY id DESC
+                      LIMIT ?
+                  )
+                """,
+                (umo, umo, limit),
+            )
+            return int(cursor.rowcount or 0)
+
+    async def get_chat_messages(
+        self, umo: str, limit: int = 50
+    ) -> list[dict[str, str]]:
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._get_chat_messages_sync, umo, limit
+            )
+
+    def _get_chat_messages_sync(
+        self, umo: str, limit: int
+    ) -> list[dict[str, str]]:
+        limit = max(0, min(200, int(limit)))
+        if limit == 0:
+            return []
+        with self._db() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM chat_messages
+                WHERE umo = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (umo, limit),
+            ).fetchall()
+        result: list[dict[str, str]] = []
+        for row in reversed(rows):
+            parts: list[str] = []
+            text = str(row["text"] or "").strip()
+            if text:
+                parts.append(text)
+            if row["image_text"]:
+                parts.append(f"[图片] {row['image_text']}")
+            elif row["has_image"]:
+                parts.append("[图片]")
+            if row["audio_text"]:
+                parts.append(f"[语音] {row['audio_text']}")
+            elif row["has_audio"]:
+                parts.append("[语音]")
+            if not parts:
+                continue
+            result.append(
+                {
+                    "sender": str(row["sender_name"] or "群友"),
+                    "text": "\n".join(parts),
+                    "time": str(row["time_label"] or ""),
+                }
+            )
+        return result
+
+    async def chat_context_stats(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            return await asyncio.to_thread(self._chat_context_stats_sync)
+
+    def _chat_context_stats_sync(self) -> list[dict[str, Any]]:
+        with self._db() as conn:
+            rows = conn.execute(
+                """
+                SELECT umo, COUNT(*) AS count, MAX(created_at) AS last_at
+                FROM chat_messages
+                GROUP BY umo
+                ORDER BY count DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def clear_chat_messages(self, umo: str = "") -> int:
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._clear_chat_messages_sync, umo
+            )
+
+    def _clear_chat_messages_sync(self, umo: str) -> int:
+        with self._db() as conn:
+            if umo:
+                cursor = conn.execute(
+                    "DELETE FROM chat_messages WHERE umo = ?", (umo,)
+                )
+            else:
+                cursor = conn.execute("DELETE FROM chat_messages")
             return int(cursor.rowcount or 0)
 
     async def stats(self, days: int = 30) -> dict[str, Any]:

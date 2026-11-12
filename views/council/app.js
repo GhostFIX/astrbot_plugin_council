@@ -4,7 +4,7 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 
 const state = {
   bridge: null,
-  meta: { providers: [], personas: [] },
+  meta: { providers: [], personas: [], defaultSafetyPrompt: "" },
   settings: null,
   members: [],
   history: {
@@ -17,6 +17,7 @@ const state = {
   activeTimer: null,
   currentDetail: null,
   activeDetailId: "",
+  versionStatus: null,
 };
 
 function sleep(ms) {
@@ -291,12 +292,15 @@ function renderSettings() {
   const discussion = settings.discussion || {};
   setValue("rounds", discussion.rounds);
   setValue("max_total_tokens", discussion.max_total_tokens);
-  setValue("max_tokens_per_speech", discussion.max_tokens_per_speech);
+  setValue(
+    "max_tokens_per_speech",
+    discussion.max_tokens_per_speech ?? 500,
+  );
   setValue("max_context_chars", discussion.max_context_chars);
   setValue("request_timeout_sec", discussion.request_timeout_sec);
   setValue("max_duration_sec", discussion.max_duration_sec);
   setValue("cooldown_sec", discussion.cooldown_sec);
-  setValue("summary_max_tokens", discussion.summary_max_tokens);
+  setValue("summary_max_tokens", discussion.summary_max_tokens ?? 800);
 
   const output = settings.output || {};
   setValue("render_mode", output.render_mode);
@@ -321,6 +325,17 @@ function renderSettings() {
   setValue("store_refused_topic", safety.store_refused_topic);
   setValue("refuse_message", safety.refuse_message);
   setValue("safety_extra_rules", safety.extra_rules);
+  setValue(
+    "safety_system_prompt",
+    safety.system_prompt || state.meta.defaultSafetyPrompt || "",
+  );
+
+  const chat = settings.chat_context || {};
+  setValue("chat_context_mode", chat.mode || "persistent");
+  setValue("chat_context_max_messages", chat.max_messages ?? 50);
+  setValue("chat_context_max_chars", chat.max_chars ?? 3000);
+  setValue("chat_context_vision_enabled", chat.vision_enabled ?? true);
+  setValue("chat_context_stt_enabled", chat.stt_enabled ?? true);
 
   fillProviderSelect(
     $("#moderator-provider"),
@@ -382,7 +397,18 @@ function collectSettings() {
     fail_mode: form.elements.namedItem("safety_fail_mode").value,
     store_refused_topic: form.elements.namedItem("store_refused_topic").checked,
     refuse_message: form.elements.namedItem("refuse_message").value.trim(),
+    system_prompt: form.elements
+      .namedItem("safety_system_prompt")
+      .value.trim(),
     max_tokens: base.safety?.max_tokens || 220,
+  };
+  base.chat_context = {
+    mode: form.elements.namedItem("chat_context_mode").value,
+    max_messages: numeric(form, "chat_context_max_messages"),
+    max_chars: numeric(form, "chat_context_max_chars"),
+    vision_enabled: form.elements.namedItem("chat_context_vision_enabled").checked,
+    stt_enabled: form.elements.namedItem("chat_context_stt_enabled").checked,
+    vision_max_tokens: base.chat_context?.vision_max_tokens || 200,
   };
   base.moderator = { provider_id: $("#moderator-provider").value };
   delete base.search.has_anysearch_api_key;
@@ -744,6 +770,23 @@ function bindEvents() {
   });
   $("#reset-settings").addEventListener("click", resetSettings);
   $("#test-search").addEventListener("click", testSearch);
+  $("#restore-safety-prompt").addEventListener("click", () => {
+    const target = $("#settings-form").elements.namedItem(
+      "safety_system_prompt",
+    );
+    target.value = state.meta.defaultSafetyPrompt || "";
+    toast("已恢复默认审核 Prompt，保存后生效");
+  });
+  $("#clear-chat-context").addEventListener("click", async () => {
+    if (!window.confirm("清空所有群的持久化群聊缓存？此操作无法恢复。")) return;
+    try {
+      const data = await apiPost("chat-context/clear", {});
+      toast(`已清除 ${data.deleted || 0} 条群聊缓存`);
+      await loadChatContextStats();
+    } catch (error) {
+      toast(error.message || "清除失败", "error");
+    }
+  });
 
   $("#history-search").addEventListener("click", () => loadHistory(1));
   $("#history-q").addEventListener("keydown", (event) => {
@@ -770,8 +813,22 @@ function bindEvents() {
 
   $("#stats-days").addEventListener("change", loadStats);
   $("#refresh-active").addEventListener("click", loadActive);
+  $("#check-update").addEventListener("click", () => {
+    const releaseUrl = safeUrl(state.versionStatus?.url);
+    if (state.versionStatus?.status === "update_available" && releaseUrl) {
+      window.open(releaseUrl, "_blank", "noopener");
+      return;
+    }
+    loadVersion(true);
+  });
   $("#refresh-all").addEventListener("click", async () => {
-    await Promise.all([loadMeta(), loadSettings(), loadHistory(state.history.page)]);
+    await Promise.all([
+      loadMeta(),
+      loadSettings(),
+      loadHistory(state.history.page),
+      loadVersion(true),
+      loadChatContextStats(),
+    ]);
     if (state.settings) renderSettings();
     toast("已刷新");
   });
@@ -790,11 +847,62 @@ function bindEvents() {
   });
 }
 
+function renderVersion(data) {
+  const versionNode = $("#version");
+  const button = $("#check-update");
+  if (data?.current_display) {
+    versionNode.textContent = data.current_display;
+  }
+  button.classList.remove("update-available");
+  if (!data) {
+    button.textContent = "检查更新";
+    button.title = "无法获取版本状态";
+    return;
+  }
+  if (data.status === "update_available") {
+    button.textContent = `新版本 ${data.latest_display || data.latest}`;
+    button.classList.add("update-available");
+    button.title = `发现新版本，点击打开 ${data.url || "GitHub"}`;
+  } else if (data.status === "up_to_date") {
+    button.textContent = "已是最新";
+    button.title = "点击重新检查";
+  } else {
+    button.textContent = "检查更新";
+    button.title = data.error || "GitHub 仓库暂不可访问（可能尚未发布）";
+  }
+}
+
+async function loadChatContextStats() {
+  try {
+    const data = await apiGet("chat-context/stats");
+    const items = data.items || [];
+    const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0);
+    $("#chat-context-stats").textContent = items.length
+      ? `已缓存 ${total} 条 / ${items.length} 个群`
+      : "暂无群聊缓存";
+  } catch {
+    $("#chat-context-stats").textContent = "";
+  }
+}
+
+async function loadVersion(force = false) {
+  try {
+    const data = await apiGet("version", force ? { force: 1 } : {});
+    state.versionStatus = data;
+    renderVersion(data);
+  } catch (error) {
+    state.versionStatus = null;
+    renderVersion(null);
+    if (force) toast(error.message || "版本检查失败", "error");
+  }
+}
+
 async function loadMeta() {
   try {
     const data = await apiGet("meta");
     state.meta.providers = data.providers || [];
     state.meta.personas = data.personas || [];
+    state.meta.defaultSafetyPrompt = data.default_safety_prompt || "";
     $("#version").textContent = `v${data.version || "1.0.0"}`;
   } catch (error) {
     toast(`Provider/人格列表加载失败：${error.message || "未知错误"}`, "error");
@@ -817,6 +925,8 @@ async function init() {
   await Promise.all([loadMeta(), loadSettings()]);
   if (state.settings) renderSettings();
   await loadHistory(1);
+  loadVersion(false);
+  loadChatContextStats();
 }
 
 if (document.readyState === "loading") {

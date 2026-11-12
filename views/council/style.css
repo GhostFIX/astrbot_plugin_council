@@ -90,6 +90,18 @@ small { font-size: 11px; }
   padding: 4px 8px;
   border-radius: 999px;
 }
+.update-check {
+  background: var(--surface);
+  cursor: pointer;
+}
+.update-check:hover { border-color: var(--primary); color: var(--primary); }
+.update-check.update-available {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+.update-check.update-available:hover { color: #fff; filter: brightness(0.96); }
 .icon-btn {
   border: 1px solid var(--line);
   background: var(--surface);

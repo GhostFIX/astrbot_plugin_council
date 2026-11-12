@@ -112,6 +112,52 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(await self.storage.get_session("s2"))
         self.assertIsNone(await self.storage.get_session("s0"))
 
+    async def test_chat_context_persistence(self):
+        first = await self.storage.add_chat_message(
+            {
+                "umo": "aiocqhttp:group:1",
+                "dedupe_key": "m1",
+                "sender_name": "A",
+                "text": "第一句",
+                "has_image": True,
+                "time_label": "10:00",
+            }
+        )
+        second = await self.storage.add_chat_message(
+            {
+                "umo": "aiocqhttp:group:1",
+                "dedupe_key": "m2",
+                "sender_name": "B",
+                "text": "第二句",
+                "has_audio": True,
+                "time_label": "10:01",
+            }
+        )
+        self.assertGreater(first, 0)
+        self.assertGreater(second, first)
+        await self.storage.update_chat_message_media(
+            first, image_text="一张示意图", audio_text=""
+        )
+        await self.storage.update_chat_message_media(
+            second, image_text="", audio_text="语音内容"
+        )
+        items = await self.storage.get_chat_messages(
+            "aiocqhttp:group:1", 10
+        )
+        self.assertEqual(len(items), 2)
+        self.assertIn("[图片] 一张示意图", items[0]["text"])
+        self.assertIn("[语音] 语音内容", items[1]["text"])
+        stats = await self.storage.chat_context_stats()
+        self.assertEqual(stats[0]["count"], 2)
+        await self.storage.trim_chat_messages("aiocqhttp:group:1", 1)
+        items = await self.storage.get_chat_messages(
+            "aiocqhttp:group:1", 10
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["sender"], "B")
+        deleted = await self.storage.clear_chat_messages()
+        self.assertEqual(deleted, 1)
+
     async def test_refused_topic(self):
         await self.storage.create_session(
             {

@@ -17,6 +17,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(len(settings["members"]), 3)
         self.assertEqual(settings["search"]["mode"], "native")
         self.assertEqual(settings["safety"]["mode"], "standard")
+        self.assertTrue(settings["safety"]["system_prompt"])
+        self.assertEqual(settings["chat_context"]["mode"], "persistent")
+        self.assertEqual(settings["chat_context"]["max_messages"], 50)
+        self.assertTrue(settings["chat_context"]["vision_enabled"])
+        self.assertTrue(settings["chat_context"]["stt_enabled"])
 
     def test_duplicate_member_name(self):
         data = default_settings()
@@ -36,6 +41,12 @@ class ConfigTests(unittest.TestCase):
         data["search"]["native_rounds"] = 3
         with self.assertRaises(SettingsError):
             validate_settings(data)
+
+    def test_chat_context_zero_allowed(self):
+        data = default_settings()
+        data["chat_context"]["max_messages"] = 0
+        settings = validate_settings(data)
+        self.assertEqual(settings["chat_context"]["max_messages"], 0)
 
     def test_unknown_provider_rejected(self):
         data = default_settings()

@@ -60,6 +60,7 @@ class FakeContext:
         ]
         self.persona_manager = FakePersonaManager()
         self.calls = 0
+        self.prompts: list[str] = []
 
     def get_all_providers(self):
         return self.providers
@@ -98,6 +99,7 @@ class FakeContext:
                 "## 可执行建议\n- 做一周试点\n\n"
                 "## 参考来源\n无"
             )
+        self.prompts.append(system + "\n" + str(kwargs.get("prompt") or ""))
         return FakeResponse("【立场】支持\n【理由】有收益\n【回应】回应对方\n【建议】先试点")
 
     async def tool_loop_agent(self, **kwargs):
@@ -127,6 +129,7 @@ def make_settings(rounds=2, search_mode="off", max_tokens=36000):
     settings["discussion"]["cooldown_sec"] = 0
     settings["search"]["mode"] = search_mode
     settings["output"]["render_mode"] = "text"
+    settings["chat_context"]["mode"] = "off"
     return settings
 
 
@@ -173,6 +176,21 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["status"], "completed")
         self.assertEqual(len(data["speeches"]), 4)
         self.assertEqual(data["safety_decision"], "allow")
+
+    async def test_chat_context_injected(self):
+        settings = make_settings()
+        settings["chat_context"]["mode"] = "quote"
+        self.store.save(settings)
+        result = await self.engine.run(
+            event=self.event(),
+            topic="结合群聊讨论",
+            chat_context=[
+                {"sender": "群友A", "text": "我们之前讨论过预算", "time": "10:00"}
+            ],
+        )
+        self.assertTrue(result.ok)
+        self.assertTrue(any("近期群聊" in item for item in self.context.prompts))
+        self.assertTrue(any("我们之前讨论过预算" in item for item in self.context.prompts))
 
     async def test_safety_refusal(self):
         self.store.save(make_settings())

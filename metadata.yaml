@@ -5,10 +5,12 @@ desc: |
   让 2～6 位 AstrBot 人格成员围绕一个议题进行多轮结构化讨论，并由中立主持人总结。
   成员可直接引用 AstrBot 已有的人格与 LLM 提供商，支持同一人格多角色、同一模型多成员或不同模型混议。
   群内只输出简洁总结；完整逐字稿保存在插件数据目录，可在 WebUI 中查询、删除、导出和统计。
+  支持白名单群的持久化群聊上下文（默认 50 条），可选图片识别与语音转写。
   内置 Token 预算、轮数、时长、并发、冷却、议题安全审核与黑白名单控制。
   搜索默认采用 native 模式：有 AstrBot 搜索工具且模型支持工具调用时由模型自行决定是否搜索；
   也提供可选的 AnySearch prefetch 模式，供没有工具能力的模型使用。
-version: 1.0.0
+  WebUI 支持版本状态检查、历史记录、统计、导出和运行中取消。
+version: 1.1.0
 author: DeepSeek-Flash (LLM) / GhostFIX
 repo: https://github.com/GhostFIX/astrbot_plugin_council
 astrbot_version: ">=4.28.0,<5"

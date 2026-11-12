@@ -27,8 +27,10 @@ except ImportError:  # pragma: no cover - Quart compatibility for older builds
 
 from .config import SettingsError
 from .constants import PLUGIN_NAME, PLUGIN_VERSION
+from .prompts import SAFETY_SYSTEM
 from .search import AnySearchClient, sources_for_storage
 from .storage import session_to_markdown, sessions_to_csv, utc_now_iso
+from .update_check import UpdateChecker
 
 
 def _query_value(name: str, default: str = "") -> str:
@@ -71,10 +73,12 @@ class CouncilWebAPI:
         self.settings_store = plugin.settings_store
         self.storage = plugin.storage
         self.engine = plugin.engine
+        self.update_checker = UpdateChecker(current_version=PLUGIN_VERSION)
 
     def register(self) -> None:
         routes = [
             ("/meta", self.meta, ["GET"], "Council providers/personas metadata"),
+            ("/version", self.version, ["GET"], "Check plugin update status"),
             ("/settings", self.settings, ["GET"], "Read council settings"),
             (
                 "/settings/save",
@@ -110,6 +114,18 @@ class CouncilWebAPI:
                 self.cancel_active,
                 ["POST"],
                 "Cancel active council",
+            ),
+            (
+                "/chat-context/stats",
+                self.chat_context_stats,
+                ["GET"],
+                "Persistent group context stats",
+            ),
+            (
+                "/chat-context/clear",
+                self.clear_chat_context,
+                ["POST"],
+                "Clear persistent group context",
             ),
         ]
         for route, handler, methods, desc in routes:
@@ -179,9 +195,15 @@ class CouncilWebAPI:
                 "version": PLUGIN_VERSION,
                 "providers": providers,
                 "personas": personas,
+                "default_safety_prompt": SAFETY_SYSTEM,
                 "username": getattr(request, "username", None),
             }
         )
+
+    async def version(self):
+        force = _query_value("force", "").lower() in {"1", "true", "yes"}
+        data = await self.update_checker.check(force=force)
+        return json_response({"success": True, **data})
 
     async def settings(self):
         data = self.settings_store.load()
@@ -359,6 +381,16 @@ class CouncilWebAPI:
                 "server_time": int(time.time()),
             }
         )
+
+    async def chat_context_stats(self):
+        items = await self.storage.chat_context_stats()
+        return json_response({"success": True, "items": items})
+
+    async def clear_chat_context(self):
+        body = await _body()
+        umo = str(body.get("umo", "")).strip()
+        deleted = await self.storage.clear_chat_messages(umo)
+        return json_response({"success": True, "deleted": deleted})
 
     async def cancel_active(self):
         body = await _body()
