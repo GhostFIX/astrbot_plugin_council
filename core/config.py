@@ -80,6 +80,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "vision_enabled": True,
         "stt_enabled": True,
         "vision_max_tokens": 200,
+        "save_raw_media": False,
     },
     "moderator": {
         "provider_id": "",
@@ -430,6 +431,10 @@ def validate_settings(
             "chat_context.vision_max_tokens",
             64,
             1024,
+        ),
+        "save_raw_media": _as_bool(
+            chat_raw.get("save_raw_media"),
+            "chat_context.save_raw_media",
         ),
     }
 

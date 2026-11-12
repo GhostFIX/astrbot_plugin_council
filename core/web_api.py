@@ -8,11 +8,12 @@ from typing import Any
 try:  # AstrBot >= 4.28
     from astrbot.api.web import (  # type: ignore
         error_response,
+        file_response,
         json_response,
         request,
     )
 except ImportError:  # pragma: no cover - Quart compatibility for older builds
-    from quart import jsonify, request  # type: ignore
+    from quart import jsonify, request, send_file  # type: ignore
 
     def json_response(data: Any, status_code: int = 200):
         response = jsonify(data)
@@ -23,6 +24,18 @@ except ImportError:  # pragma: no cover - Quart compatibility for older builds
         response = jsonify({"success": False, "error": message})
         response.status_code = status_code
         return response
+
+    def file_response(
+        path: Any,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ):
+        return send_file(
+            path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype=content_type,
+        )
 
 
 from .config import SettingsError
@@ -120,6 +133,18 @@ class CouncilWebAPI:
                 self.chat_context_stats,
                 ["GET"],
                 "Persistent group context stats",
+            ),
+            (
+                "/chat-context/records",
+                self.chat_context_records,
+                ["GET"],
+                "Inspect persistent group messages",
+            ),
+            (
+                "/chat-context/media",
+                self.chat_context_media,
+                ["GET"],
+                "Download saved raw group media",
             ),
             (
                 "/chat-context/clear",
@@ -385,6 +410,26 @@ class CouncilWebAPI:
     async def chat_context_stats(self):
         items = await self.storage.chat_context_stats()
         return json_response({"success": True, "items": items})
+
+    async def chat_context_records(self):
+        data = await self.storage.get_chat_records(
+            umo=_query_value("umo", ""),
+            page=_query_int("page", 1),
+            page_size=_query_int("page_size", 20),
+        )
+        return json_response({"success": True, **data})
+
+    async def chat_context_media(self):
+        relative = _query_value("path", "")
+        try:
+            path = self.plugin.media_store.resolve(relative)
+            return file_response(
+                path,
+                filename=path.name,
+                content_type=self.plugin.media_store.content_type(path),
+            )
+        except Exception:  # noqa: BLE001
+            return error_response("媒体文件不存在", status_code=404)
 
     async def clear_chat_context(self):
         body = await _body()

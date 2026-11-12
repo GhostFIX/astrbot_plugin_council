@@ -24,6 +24,7 @@ from .core.command_text import (
     is_stop_command,
 )
 from .core.config import SettingsStore
+from .core.media_store import MediaStore
 from .core.constants import PLUGIN_NAME
 from .core.engine import CouncilEngine
 from .core.render import CouncilRenderer, format_summary_text, split_text
@@ -72,7 +73,10 @@ class CouncilPlugin(Star):
             logger.exception("council data directory could not be created")
 
         self.settings_store = SettingsStore(self.data_dir / "settings.json")
-        self.storage = CouncilStorage(self.data_dir / "council.db")
+        self.media_store = MediaStore(self.data_dir / "media")
+        self.storage = CouncilStorage(
+            self.data_dir / "council.db", media_store=self.media_store
+        )
         self.renderer = CouncilRenderer(self.plugin_dir)
         self.engine = CouncilEngine(
             context=context,
@@ -142,13 +146,26 @@ class CouncilPlugin(Star):
         *,
         row_id: int,
         umo: str,
+        images: list[Any],
         image_urls: list[str],
         records: list[Any],
+        save_raw_media: bool,
         settings: dict[str, Any],
     ) -> None:
         cfg = settings.get("chat_context", {})
         image_text = ""
         audio_text = ""
+        media_entries: list[dict[str, Any]] = []
+        if save_raw_media:
+            for index, image in enumerate(images[:2]):
+                entry = await self.media_store.save_image(
+                    self._media_url(image),
+                    umo=umo,
+                    row_id=row_id,
+                    index=index,
+                )
+                if entry:
+                    media_entries.append(entry)
         if image_urls and bool(cfg.get("vision_enabled", True)):
             try:
                 provider = await self.context.get_current_chat_provider_id(umo)
@@ -169,15 +186,32 @@ class CouncilPlugin(Star):
                 ).strip()[:800]
             except Exception:  # noqa: BLE001
                 self._debug("image recognition failed")
-        if records and bool(cfg.get("stt_enabled", True)):
+
+        audio_paths: list[str] = []
+        for record in records[:2]:
+            try:
+                path = await asyncio.wait_for(
+                    record.convert_to_file_path(), timeout=20
+                )
+                audio_paths.append(str(path))
+            except Exception:  # noqa: BLE001
+                self._debug("audio file preparation failed")
+        if save_raw_media:
+            for index, path in enumerate(audio_paths):
+                entry = await self.media_store.save_audio(
+                    path,
+                    umo=umo,
+                    row_id=row_id,
+                    index=index,
+                )
+                if entry:
+                    media_entries.append(entry)
+        if audio_paths and bool(cfg.get("stt_enabled", True)):
             stt = self._get_stt(umo)
             if stt is not None:
                 transcripts: list[str] = []
-                for record in records[:2]:
+                for path in audio_paths:
                     try:
-                        path = await asyncio.wait_for(
-                            record.convert_to_file_path(), timeout=20
-                        )
                         text = await asyncio.wait_for(
                             stt.get_text(path), timeout=30
                         )
@@ -187,14 +221,20 @@ class CouncilPlugin(Star):
                     except Exception:  # noqa: BLE001
                         self._debug("audio transcription failed")
                 audio_text = "；".join(transcripts)[:1600]
-        if image_text or audio_text:
+        if image_text or audio_text or media_entries:
             try:
-                await self.storage.update_chat_message_media(
+                saved = await self.storage.update_chat_message_media(
                     row_id,
                     image_text=image_text,
                     audio_text=audio_text,
+                    media=media_entries if save_raw_media else None,
                 )
+                if not saved:
+                    for entry in media_entries:
+                        self.media_store.delete(entry.get("path", ""))
             except Exception:  # noqa: BLE001
+                for entry in media_entries:
+                    self.media_store.delete(entry.get("path", ""))
                 self._debug("chat media storage update failed")
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
@@ -282,9 +322,20 @@ class CouncilPlugin(Star):
             if not row_id:
                 return
             await self.storage.trim_chat_messages(umo, max_messages)
+            try:
+                is_onebot = str(event.get_platform_name()) == "aiocqhttp"
+            except Exception:  # noqa: BLE001
+                is_onebot = False
+            save_raw_media = bool(cfg.get("save_raw_media", False)) and is_onebot
             should_enrich = (
-                bool(images) and bool(cfg.get("vision_enabled", True))
-            ) or (bool(records) and bool(cfg.get("stt_enabled", True)))
+                bool(images)
+                and (
+                    bool(cfg.get("vision_enabled", True)) or save_raw_media
+                )
+            ) or (
+                bool(records)
+                and (bool(cfg.get("stt_enabled", True)) or save_raw_media)
+            )
             if should_enrich:
                 image_urls = [
                     url
@@ -295,8 +346,10 @@ class CouncilPlugin(Star):
                     self._enrich_chat_message(
                         row_id=row_id,
                         umo=umo,
+                        images=images,
                         image_urls=image_urls,
                         records=records,
+                        save_raw_media=save_raw_media,
                         settings=settings,
                     )
                 )

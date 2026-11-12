@@ -18,6 +18,7 @@ const state = {
   currentDetail: null,
   activeDetailId: "",
   versionStatus: null,
+  chatRecords: { page: 1, page_size: 20, total: 0, pages: 1, items: [] },
 };
 
 function sleep(ms) {
@@ -336,6 +337,7 @@ function renderSettings() {
   setValue("chat_context_max_chars", chat.max_chars ?? 3000);
   setValue("chat_context_vision_enabled", chat.vision_enabled ?? true);
   setValue("chat_context_stt_enabled", chat.stt_enabled ?? true);
+  setValue("chat_context_save_raw_media", chat.save_raw_media ?? false);
 
   fillProviderSelect(
     $("#moderator-provider"),
@@ -408,6 +410,7 @@ function collectSettings() {
     max_chars: numeric(form, "chat_context_max_chars"),
     vision_enabled: form.elements.namedItem("chat_context_vision_enabled").checked,
     stt_enabled: form.elements.namedItem("chat_context_stt_enabled").checked,
+    save_raw_media: form.elements.namedItem("chat_context_save_raw_media").checked,
     vision_max_tokens: base.chat_context?.vision_max_tokens || 200,
   };
   base.moderator = { provider_id: $("#moderator-provider").value };
@@ -744,6 +747,9 @@ function activateTab(name) {
     state.activeTimer = null;
   }
   if (name === "history") loadHistory(1);
+  if (name === "chat") {
+    loadChatContextStats().then(() => loadChatRecords(1));
+  }
   if (name === "stats") loadStats();
   if (name === "active") {
     loadActive();
@@ -783,6 +789,9 @@ function bindEvents() {
       const data = await apiPost("chat-context/clear", {});
       toast(`已清除 ${data.deleted || 0} 条群聊缓存`);
       await loadChatContextStats();
+      if ($("#panel-chat").classList.contains("active")) {
+        await loadChatRecords(1);
+      }
     } catch (error) {
       toast(error.message || "清除失败", "error");
     }
@@ -813,6 +822,35 @@ function bindEvents() {
 
   $("#stats-days").addEventListener("change", loadStats);
   $("#refresh-active").addEventListener("click", loadActive);
+  $("#refresh-chat-records").addEventListener("click", () => loadChatRecords(1));
+  $("#chat-records-search").addEventListener("click", () => loadChatRecords(1));
+  $("#chat-group-filter").addEventListener("change", () => loadChatRecords(1));
+  $("#chat-prev").addEventListener("click", () =>
+    loadChatRecords(Math.max(1, state.chatRecords.page - 1)),
+  );
+  $("#chat-next").addEventListener("click", () =>
+    loadChatRecords(
+      Math.min(state.chatRecords.pages, state.chatRecords.page + 1),
+    ),
+  );
+  $("#clear-chat-group").addEventListener("click", async () => {
+    const umo = $("#chat-group-filter").value;
+    const label = umo || "全部群";
+    if (!window.confirm(`清空 ${label} 的群聊缓存？此操作无法恢复。`)) return;
+    try {
+      const data = await apiPost("chat-context/clear", umo ? { umo } : {});
+      toast(`已清除 ${data.deleted || 0} 条群聊缓存`);
+      await loadChatContextStats();
+      await loadChatRecords(1);
+    } catch (error) {
+      toast(error.message || "清除失败", "error");
+    }
+  });
+  $("#chat-records").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-media-path]");
+    if (!button) return;
+    downloadChatMedia(button.dataset.mediaPath, button.dataset.mediaName);
+  });
   $("#check-update").addEventListener("click", () => {
     const releaseUrl = safeUrl(state.versionStatus?.url);
     if (state.versionStatus?.status === "update_available" && releaseUrl) {
@@ -880,8 +918,103 @@ async function loadChatContextStats() {
     $("#chat-context-stats").textContent = items.length
       ? `已缓存 ${total} 条 / ${items.length} 个群`
       : "暂无群聊缓存";
+
+    const select = $("#chat-group-filter");
+    const current = select.value;
+    select.innerHTML = "";
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = "全部群";
+    select.append(all);
+    for (const item of items) {
+      const option = document.createElement("option");
+      option.value = item.umo;
+      option.textContent = `${item.umo}（${item.count} 条）`;
+      select.append(option);
+    }
+    select.value = items.some((item) => item.umo === current) ? current : "";
   } catch {
     $("#chat-context-stats").textContent = "";
+  }
+}
+
+function renderChatRecords() {
+  const data = state.chatRecords;
+  const container = $("#chat-records");
+  if (!data.items.length) {
+    container.innerHTML = `<div class="empty">当前筛选没有群聊记录</div>`;
+  } else {
+    container.innerHTML = data.items
+      .map((item) => {
+        const text = item.text ? `<div class="chat-record-text">${esc(item.text)}</div>` : "";
+        const image = item.image_text
+          ? `<div class="chat-record-text muted">图片：${esc(item.image_text)}</div>`
+          : item.has_image
+            ? `<div class="chat-record-text muted">[图片] 未识别</div>`
+            : "";
+        const audio = item.audio_text
+          ? `<div class="chat-record-text muted">语音：${esc(item.audio_text)}</div>`
+          : item.has_audio
+            ? `<div class="chat-record-text muted">[语音] 未转写</div>`
+            : "";
+        const media = (item.media || [])
+          .map(
+            (entry) => `
+          <button class="chat-media-btn" data-media-path="${esc(entry.path)}" data-media-name="${esc(entry.name)}">
+            ${entry.type === "audio" ? "下载原音频" : "下载原图"} · ${esc(entry.name)}
+          </button>`,
+          )
+          .join("");
+        return `
+        <div class="chat-record">
+          <div class="chat-record-head">
+            <span><b>${esc(item.sender_name || "群友")}</b> · ${esc(item.time_label || "")}</span>
+            <span>${esc(formatDate(item.created_at))}</span>
+          </div>
+          ${text}${image}${audio}
+          ${media ? `<div class="chat-media-row">${media}</div>` : ""}
+          <div class="chat-record-umo">${esc(item.umo || "")}</div>
+        </div>`;
+      })
+      .join("");
+  }
+  $("#chat-records-count").textContent = `共 ${data.total} 条`;
+  $("#chat-page-info").textContent = `${data.page} / ${data.pages}`;
+  $("#chat-prev").disabled = data.page <= 1;
+  $("#chat-next").disabled = data.page >= data.pages;
+}
+
+async function loadChatRecords(page = 1) {
+  try {
+    const data = await apiGet("chat-context/records", {
+      umo: $("#chat-group-filter").value,
+      page,
+      page_size: state.chatRecords.page_size,
+    });
+    state.chatRecords = {
+      page: data.page,
+      page_size: data.page_size,
+      total: data.total,
+      pages: data.pages,
+      items: data.items || [],
+    };
+    renderChatRecords();
+  } catch (error) {
+    toast(error.message || "群聊记录加载失败", "error");
+  }
+}
+
+async function downloadChatMedia(path, name) {
+  if (!path) return;
+  try {
+    const bridge = await getBridge();
+    if (bridge && typeof bridge.download === "function") {
+      await bridge.download("chat-context/media", { path }, name || "media");
+      return;
+    }
+    window.open(endpointUrl("chat-context/media", { path }).href, "_blank");
+  } catch (error) {
+    toast(error.message || "下载失败", "error");
   }
 }
 

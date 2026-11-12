@@ -141,12 +141,29 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         await self.storage.update_chat_message_media(
             second, image_text="", audio_text="语音内容"
         )
+        await self.storage.update_chat_message_media(
+            first,
+            image_text="一张示意图",
+            audio_text="",
+            media=[
+                {
+                    "type": "image",
+                    "path": "group/a.jpg",
+                    "name": "a.jpg",
+                }
+            ],
+        )
         items = await self.storage.get_chat_messages(
             "aiocqhttp:group:1", 10
         )
         self.assertEqual(len(items), 2)
         self.assertIn("[图片] 一张示意图", items[0]["text"])
         self.assertIn("[语音] 语音内容", items[1]["text"])
+        records = await self.storage.get_chat_records(
+            umo="aiocqhttp:group:1", page=1, page_size=10
+        )
+        self.assertEqual(records["total"], 2)
+        self.assertEqual(records["items"][1]["media"][0]["name"], "a.jpg")
         stats = await self.storage.chat_context_stats()
         self.assertEqual(stats[0]["count"], 2)
         await self.storage.trim_chat_messages("aiocqhttp:group:1", 1)

@@ -20,8 +20,10 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(settings["safety"]["system_prompt"])
         self.assertEqual(settings["chat_context"]["mode"], "persistent")
         self.assertEqual(settings["chat_context"]["max_messages"], 50)
+        self.assertEqual(settings["chat_context"]["max_messages"], 50)
         self.assertTrue(settings["chat_context"]["vision_enabled"])
         self.assertTrue(settings["chat_context"]["stt_enabled"])
+        self.assertFalse(settings["chat_context"]["save_raw_media"])
 
     def test_duplicate_member_name(self):
         data = default_settings()

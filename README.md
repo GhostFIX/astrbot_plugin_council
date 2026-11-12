@@ -158,7 +158,7 @@ allowed_umos 为空         → 允许
 - 输出：图片 / 文字 / 两者；
 - 搜索：native / off / prefetch，native 搜索轮数，AnySearch Key；
 - 安全审核：模式、审核模型、可编辑的审核系统 Prompt、失败策略、追加规则、拒绝提示；
-- 群聊上下文：off / persistent / quote / recent，最多消息数（0～200），最多字符数，图片识别、语音转文字开关，清空缓存。
+- 群聊上下文：off / persistent / quote / recent，最多消息数（0～200），最多字符数，图片识别、语音转文字、保存原始图片/音频（仅 OneBot）开关，清空缓存。
 
 配置保存在：
 
@@ -200,8 +200,10 @@ AstrBot/data/plugin_data/astrbot_plugin_council/settings.json
 
 - 图片：使用当前会话的聊天模型做一次图片描述，默认最多 200 tokens；不支持视觉的模型会保留 `[图片]` 占位。
 - 语音：使用 AstrBot 当前 STT 提供商转文字；未配置或失败时保留 `[语音]` 占位。
-- 图片识别和 STT 在后台异步执行，不阻塞普通群消息；原始图片/音频不写入插件数据库，只保存文字描述/转写。
+- 图片识别和 STT 在后台异步执行，不阻塞普通群消息。
 - 图片识别和 STT 会产生额外模型费用，可在 WebUI 中分别关闭。
+- **保存原始图片/音频（仅 OneBot）**：默认关闭；开启后原始文件保存在 `data/plugin_data/astrbot_plugin_council/media/`，单文件上限 10MB，数据库中只保存文件路径。记录被裁剪或清空时对应文件会一起删除。
+- WebUI 的「群聊记录」tab 可以查看已持久化的文字、图片描述、语音转写，并下载已保存的原始图片/音频。
 
 ### prefetch
 
@@ -243,6 +245,7 @@ reason: ...
 - **历史记录**：按议题、状态、日期筛选；查看完整逐字稿；单条/批量删除；
 - **导出**：Markdown（完整记录）、JSON（结构化）、CSV（汇总）；
 - **统计**：场次、Token、平均轮数、发言数、每日趋势、成员参与度；
+- **群聊记录**：查看已持久化的群聊文字、图片描述、语音转写，按群筛选、分页，下载原始图片/音频（若已开启保存），清空全部或当前群缓存；
 - **运行中**：查看当前讨论并取消；
 - **版本状态**：页面右上角显示当前版本，并按需检查 GitHub Release / Tag / `metadata.yaml`，显示“已是最新 / 有新版本 / 无法检查”。检查结果缓存 6 小时，不会自动下载或覆盖插件；仓库不可访问（例如尚未发布）时只显示“检查更新”，不会报错阻断页面。
 
@@ -289,7 +292,7 @@ AstrBot/data/plugin_data/astrbot_plugin_council/
 ```
 
 - 完整逐字稿保存在 `council.db`，受 `history_limit` 限制；
-- `persistent` 群聊缓存也在 `council.db` 的 `chat_messages` 表中，按群保留最近 N 条，只存文字与图片/语音的文字化结果，不存原始媒体；可在 WebUI 清空；
+- `persistent` 群聊缓存也在 `council.db` 的 `chat_messages` 表中，按群保留最近 N 条；默认只存文字与图片/语音的文字化结果，开启“保存原始图片/音频（仅 OneBot）”后才在 `data/plugin_data/astrbot_plugin_council/media/` 保存原始文件，数据库只存路径；可在 WebUI 清空；
 - WebUI 管理员可查看所有会话的历史；
 - 聊天内只返回总结；
 - 不保存 LLM API Key；
@@ -350,7 +353,7 @@ astrbot_plugin_council/
 
 - WebUI 依赖 AstrBot 4.28+；
 - AstrBot 的功能工具搜索能力取决于当前模型是否支持函数调用；
-- `persistent` 群聊上下文只记录白名单群，白名单为空时不记录；图片识别需要当前会话模型支持图片输入，STT 需要 AstrBot 已配置 STT 提供商；
+- `persistent` 群聊上下文只记录白名单群，白名单为空时不记录；图片识别需要当前会话模型支持图片输入，STT 需要 AstrBot 已配置 STT 提供商；原始图片/音频保存只对 OneBot 生效，单文件上限 10MB；
 - `recent` 群聊上下文目前只支持 OneBot / `aiocqhttp` 的 `get_group_msg_history`，其他平台回退到 `quote`；
 - 长图由 AstrBot 的文转图服务渲染，服务不可用时自动降级文字；
 - 安全审核不能替代平台审核；

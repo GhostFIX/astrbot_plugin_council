@@ -17,7 +17,7 @@
           </div>
         </div>
         <div class="top-actions">
-          <span class="version" id="version">v1.1.0</span>
+          <span class="version" id="version">v1.2.0</span>
           <button class="version update-check" id="check-update" title="检查更新">检查更新</button>
           <button class="icon-btn" id="refresh-all" title="刷新">刷新</button>
         </div>
@@ -26,6 +26,7 @@
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="config" role="tab">讨论配置</button>
         <button class="tab" data-tab="history" role="tab">历史记录</button>
+        <button class="tab" data-tab="chat" role="tab">群聊记录</button>
         <button class="tab" data-tab="stats" role="tab">统计</button>
         <button class="tab" data-tab="active" role="tab">运行中</button>
       </nav>
@@ -227,6 +228,10 @@
                   <input type="checkbox" name="chat_context_stt_enabled" />
                   语音转文字
                 </label>
+                <label class="checkline">
+                  <input type="checkbox" name="chat_context_save_raw_media" />
+                  保存原始图片/音频（仅 OneBot）
+                </label>
               </div>
               <div class="row-actions" style="margin-top:10px">
                 <button type="button" class="btn danger ghost" id="clear-chat-context">清空群聊缓存</button>
@@ -297,6 +302,34 @@
                 <button class="btn ghost" id="prev-page">上一页</button>
                 <span class="muted" id="page-info">1 / 1</span>
                 <button class="btn ghost" id="next-page">下一页</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-chat">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>已持久化的群聊记录</h2>
+                <p class="muted">只展示白名单群缓存；图片/语音识别结果和可选原始媒体都在这里查看。</p>
+              </div>
+              <div class="row-actions">
+                <button class="btn ghost" id="refresh-chat-records">刷新</button>
+                <button class="btn danger ghost" id="clear-chat-group">清空当前筛选</button>
+              </div>
+            </div>
+            <div class="filters">
+              <select id="chat-group-filter"><option value="">全部群</option></select>
+              <button class="btn ghost" id="chat-records-search">查看</button>
+            </div>
+            <div id="chat-records" class="chat-records"></div>
+            <div class="pager">
+              <span class="muted" id="chat-records-count"></span>
+              <div class="row-actions">
+                <button class="btn ghost" id="chat-prev">上一页</button>
+                <span class="muted" id="chat-page-info">1 / 1</span>
+                <button class="btn ghost" id="chat-next">下一页</button>
               </div>
             </div>
           </div>

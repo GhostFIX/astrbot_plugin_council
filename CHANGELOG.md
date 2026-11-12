@@ -1,9 +1,16 @@
 # Changelog
 
+## 1.2.0 - 2026-11-12
+
+- 新增「群聊记录」WebUI tab：按群筛选、分页、查看文字/图片描述/语音转写、下载原始媒体、清空缓存；
+- 新增 OneBot 原始图片/音频保存选项（默认关闭，单文件上限 10MB，裁剪/清空时同步删除文件）；
+- `persistent` 群聊上下文默认保留 50 条（0～200），只记录白名单群，白名单为空不记录；
+- 图片识别与 STT 在后台异步执行，不阻塞普通群消息；普通群消息不会触发默认 LLM。
+
 ## 1.1.0 - 2026-11-12
 
 - 新增 WebUI 版本状态：检查 GitHub Release / Tag / metadata，区分“已是最新 / 有新版本 / 无法检查”；
-- 新增群聊上下文：`off` / `persistent` / `quote` / `recent`；`persistent` 只记录白名单群，默认 50 条（0～200），支持图片识别与 STT 文字化，原文/媒体不落盘；
+- 新增群聊上下文：`off` / `persistent` / `quote` / `recent`，支持图片识别与 STT 文字化；
 - 安全审核系统 Prompt 可在 WebUI 中编辑并恢复默认；
 - `/council stop` 改为独立注册命令，不再作为议题参数解析；
 - 修复数字输入步进导致单次发言/总结上限默认值被浏览器判定非法的问题。
@@ -19,8 +26,8 @@
 - 默认全开的白名单/黑名单访问控制，黑名单优先；
 - native / off / prefetch 三种搜索模式，默认 native；
 - 可选 AnySearch 预检索；
-- 讨论前 LLM 安全审核，默认 standard、fail-closed；审核系统 Prompt 可在 WebUI 中编辑并恢复默认；
-- 群聊上下文：`off` / `quote` / `recent`，默认关闭；`recent` 仅 OneBot，按需读取、不落盘；
+- 讨论前 LLM 安全审核，默认 standard、fail-closed；
+- 群聊上下文：`off` / `quote` / `recent`，默认关闭；`recent` 仅 OneBot，按需读取；
 - Token 总预算、轮数、上下文、超时、时长、并发、冷却控制；
 - 图片/文字输出，图片失败自动降级；
 - SQLite 历史存储与保留策略。

@@ -48,8 +48,9 @@ class CouncilStorage:
     leaving a dangling connection in the event loop.
     """
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, media_store: Any = None):
         self.path = Path(path)
+        self.media_store = media_store
         self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
@@ -141,6 +142,7 @@ class CouncilStorage:
                     has_image INTEGER NOT NULL DEFAULT 0,
                     has_audio INTEGER NOT NULL DEFAULT 0,
                     time_label TEXT NOT NULL DEFAULT '',
+                    media_json TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     UNIQUE (umo, dedupe_key)
                 );
@@ -159,6 +161,17 @@ class CouncilStorage:
                 PRAGMA user_version = 1;
                 """
             )
+            columns = {
+                str(row[1])
+                for row in conn.execute(
+                    "PRAGMA table_info(chat_messages)"
+                ).fetchall()
+            }
+            if "media_json" not in columns:
+                conn.execute(
+                    "ALTER TABLE chat_messages "
+                    "ADD COLUMN media_json TEXT NOT NULL DEFAULT '[]'"
+                )
         try:
             os.chmod(self.path, 0o600)
         except OSError:
@@ -518,13 +531,15 @@ class CouncilStorage:
         *,
         image_text: str = "",
         audio_text: str = "",
-    ) -> None:
+        media: list[dict[str, Any]] | None = None,
+    ) -> bool:
         async with self._lock:
-            await asyncio.to_thread(
+            return await asyncio.to_thread(
                 self._update_chat_message_media_sync,
                 message_row_id,
                 image_text,
                 audio_text,
+                media,
             )
 
     def _update_chat_message_media_sync(
@@ -532,20 +547,23 @@ class CouncilStorage:
         message_row_id: int,
         image_text: str,
         audio_text: str,
-    ) -> None:
+        media: list[dict[str, Any]] | None,
+    ) -> bool:
+        assignments = ["image_text = ?", "audio_text = ?"]
+        values: list[Any] = [
+            str(image_text or "")[:1500],
+            str(audio_text or "")[:2000],
+        ]
+        if media is not None:
+            assignments.append("media_json = ?")
+            values.append(_json_dumps(media))
+        values.append(int(message_row_id))
         with self._db() as conn:
-            conn.execute(
-                """
-                UPDATE chat_messages
-                SET image_text = ?, audio_text = ?
-                WHERE id = ?
-                """,
-                (
-                    str(image_text or "")[:1500],
-                    str(audio_text or "")[:2000],
-                    int(message_row_id),
-                ),
+            cursor = conn.execute(
+                f"UPDATE chat_messages SET {', '.join(assignments)} WHERE id = ?",
+                tuple(values),
             )
+            return bool(cursor.rowcount)
 
     async def trim_chat_messages(self, umo: str, limit: int) -> int:
         async with self._lock:
@@ -557,24 +575,51 @@ class CouncilStorage:
         limit = max(0, int(limit))
         with self._db() as conn:
             if limit == 0:
+                rows = conn.execute(
+                    "SELECT media_json FROM chat_messages WHERE umo = ?",
+                    (umo,),
+                ).fetchall()
                 cursor = conn.execute(
                     "DELETE FROM chat_messages WHERE umo = ?", (umo,)
                 )
-                return int(cursor.rowcount or 0)
-            cursor = conn.execute(
-                """
-                DELETE FROM chat_messages
-                WHERE umo = ?
-                  AND id NOT IN (
-                      SELECT id FROM chat_messages
-                      WHERE umo = ?
-                      ORDER BY id DESC
-                      LIMIT ?
-                  )
-                """,
-                (umo, umo, limit),
-            )
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT media_json FROM chat_messages
+                    WHERE umo = ?
+                      AND id NOT IN (
+                          SELECT id FROM chat_messages
+                          WHERE umo = ?
+                          ORDER BY id DESC
+                          LIMIT ?
+                      )
+                    """,
+                    (umo, umo, limit),
+                ).fetchall()
+                cursor = conn.execute(
+                    """
+                    DELETE FROM chat_messages
+                    WHERE umo = ?
+                      AND id NOT IN (
+                          SELECT id FROM chat_messages
+                          WHERE umo = ?
+                          ORDER BY id DESC
+                          LIMIT ?
+                      )
+                    """,
+                    (umo, umo, limit),
+                )
+            self._delete_media_for_rows(conn, rows)
             return int(cursor.rowcount or 0)
+
+    def _delete_media_for_rows(self, conn: sqlite3.Connection, rows: Any) -> None:
+        if self.media_store is None:
+            return
+        for row in rows:
+            for item in _json_loads(row["media_json"], []):
+                path = item.get("path") if isinstance(item, dict) else ""
+                if path:
+                    self.media_store.delete(path)
 
     async def get_chat_messages(
         self, umo: str, limit: int = 50
@@ -625,6 +670,52 @@ class CouncilStorage:
             )
         return result
 
+    async def get_chat_records(
+        self,
+        *,
+        umo: str = "",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._get_chat_records_sync, umo, page, page_size
+            )
+
+    def _get_chat_records_sync(
+        self, umo: str, page: int, page_size: int
+    ) -> dict[str, Any]:
+        page = max(1, int(page))
+        page_size = max(1, min(100, int(page_size)))
+        where = "WHERE umo = ?" if umo else ""
+        params: tuple[Any, ...] = (umo,) if umo else ()
+        with self._db() as conn:
+            total = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM chat_messages {where}", params
+                ).fetchone()[0]
+            )
+            rows = conn.execute(
+                f"""
+                SELECT * FROM chat_messages {where}
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (*params, page_size, (page - 1) * page_size),
+            ).fetchall()
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["media"] = _json_loads(item.pop("media_json", "[]"), [])
+            items.append(item)
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": max(1, (total + page_size - 1) // page_size),
+        }
+
     async def chat_context_stats(self) -> list[dict[str, Any]]:
         async with self._lock:
             return await asyncio.to_thread(self._chat_context_stats_sync)
@@ -650,11 +741,19 @@ class CouncilStorage:
     def _clear_chat_messages_sync(self, umo: str) -> int:
         with self._db() as conn:
             if umo:
+                rows = conn.execute(
+                    "SELECT media_json FROM chat_messages WHERE umo = ?",
+                    (umo,),
+                ).fetchall()
                 cursor = conn.execute(
                     "DELETE FROM chat_messages WHERE umo = ?", (umo,)
                 )
             else:
+                rows = conn.execute(
+                    "SELECT media_json FROM chat_messages"
+                ).fetchall()
                 cursor = conn.execute("DELETE FROM chat_messages")
+            self._delete_media_for_rows(conn, rows)
             return int(cursor.rowcount or 0)
 
     async def stats(self, days: int = 30) -> dict[str, Any]:
